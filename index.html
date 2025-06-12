@@ -1,0 +1,233 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kevin's Games</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f4f4f4;
+    }
+    header {
+      background: #333;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    .container {
+      padding: 2rem;
+      max-width: 800px;
+      margin: auto;
+      background: white;
+      margin-top: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    button, select, input {
+      padding: 0.5rem;
+      margin: 0.5rem;
+    }
+    .hidden {
+      display: none;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+    th, td {
+      padding: 0.5rem;
+      border: 1px solid #ddd;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      margin: 0.3rem 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Kevin's Games</h1>
+  </header>
+  <div class="container" id="homeScreen">
+    <h2>Welcome! Choose a Game</h2>
+    <button onclick="startGame('briscas')">Play Briscas</button>
+    <button onclick="startGame('dominos')">Play Dominos</button>
+  </div>
+
+  <div class="container hidden" id="playerScreen">
+    <h2 id="gameTitle"></h2>
+    <h3>Manage Players</h3>
+    <input type="text" id="playerName" placeholder="Enter player name" />
+    <button onclick="addPlayer()">Add Player</button>
+    <ul id="playerList"></ul>
+    <button onclick="goToMatchScreen()">Continue</button>
+    <button onclick="goHome()">Back</button>
+  </div>
+
+  <div class="container hidden" id="matchScreen">
+    <h2 id="matchTitle">Record Match</h2>
+    <div id="matchInputs"></div>
+    <input type="text" id="scoresInput" placeholder="Enter scores (comma-separated)" />
+    <button onclick="submitMatch()">Submit Match</button>
+    <h3>Standings</h3>
+    <table>
+      <thead>
+        <tr><th>Player</th><th>Wins</th><th>Losses</th><th>Games</th><th>Win %</th></tr>
+      </thead>
+      <tbody id="standingsTable"></tbody>
+    </table>
+    <button onclick="goHome()">Back to Home</button>
+  </div>
+
+  <script>
+    let currentGame = null;
+    const players = JSON.parse(localStorage.getItem("players") || "[]");
+    const standings = JSON.parse(localStorage.getItem("standings") || "{}");
+
+    function save() {
+      localStorage.setItem("players", JSON.stringify(players));
+      localStorage.setItem("standings", JSON.stringify(standings));
+    }
+
+    function showScreen(screenId) {
+      document.querySelectorAll(".container").forEach(div => div.classList.add("hidden"));
+      document.getElementById(screenId).classList.remove("hidden");
+    }
+
+    function goHome() {
+      showScreen("homeScreen");
+    }
+
+    function startGame(game) {
+      currentGame = game;
+      document.getElementById("gameTitle").textContent = `Managing players for ${game.toUpperCase()}`;
+      renderPlayers();
+      showScreen("playerScreen");
+    }
+
+    function goToMatchScreen() {
+      renderMatchInputs();
+      renderStandings();
+      showScreen("matchScreen");
+    }
+
+    function renderPlayers() {
+      const list = document.getElementById("playerList");
+      list.innerHTML = "";
+      players.forEach(p => {
+        const li = document.createElement("li");
+        li.textContent = p + " ";
+        const del = document.createElement("button");
+        del.textContent = "❌";
+        del.onclick = () => {
+          const index = players.indexOf(p);
+          if (index !== -1) players.splice(index, 1);
+          delete standings[p];
+          save();
+          renderPlayers();
+        };
+        li.appendChild(del);
+        list.appendChild(li);
+      });
+    }
+
+    function addPlayer() {
+      const input = document.getElementById("playerName");
+      const name = input.value.trim();
+      if (name && !players.includes(name)) {
+        players.push(name);
+        if (!standings[name]) standings[name] = { briscas: { w:0, l:0, g:0 }, dominos: { w:0, l:0, g:0 } };
+        save();
+        renderPlayers();
+      }
+      input.value = "";
+    }
+
+    function renderMatchInputs() {
+      const container = document.getElementById("matchInputs");
+      container.innerHTML = "<p>Select players involved:</p>";
+
+      const max = currentGame === "dominos" ? 4 : 3;
+      for (let i = 0; i < max; i++) {
+        const select = document.createElement("select");
+        select.innerHTML = "<option value=''>-- None --</option>" +
+          players.map(p => `<option value="${p}">${p}</option>`).join("");
+        container.appendChild(select);
+      }
+    }
+
+    function submitMatch() {
+      const selects = [...document.querySelectorAll("#matchInputs select")];
+      const selectedPlayers = selects.map(s => s.value).filter(v => v);
+      const scoreValues = document.getElementById("scoresInput").value.split(",").map(s => parseInt(s.trim()));
+      if (selectedPlayers.length !== scoreValues.length) {
+        alert("Players and scores count must match.");
+        return;
+      }
+
+      if (currentGame === "dominos") {
+        const [s1, s2] = scoreValues;
+        const [p1, p2] = selectedPlayers;
+        let winner, loser, winCount = 1;
+
+        if (s1 >= 150 && s2 === 0) winCount = 2;
+        else if (s1 === 100 && s2 === 0) winCount = 3;
+
+        if (s1 > s2) {
+          winner = p1; loser = p2;
+        } else {
+          winner = p2; loser = p1;
+        }
+        updateStats(winner, loser, winCount, currentGame);
+      } else if (currentGame === "briscas") {
+        const maxScore = Math.max(...scoreValues);
+        const winnerIndex = scoreValues.indexOf(maxScore);
+        const winner = selectedPlayers[winnerIndex];
+        const losers = selectedPlayers.filter((_, i) => i !== winnerIndex);
+        losers.forEach(l => updateStats(winner, l, 1, currentGame));
+      }
+
+      save();
+      renderStandings();
+      document.getElementById("scoresInput").value = "";
+    }
+
+    function updateStats(winner, loser, winCount, game) {
+      if (!standings[winner]) standings[winner] = { briscas: { w:0, l:0, g:0 }, dominos: { w:0, l:0, g:0 } };
+      if (!standings[loser]) standings[loser] = { briscas: { w:0, l:0, g:0 }, dominos: { w:0, l:0, g:0 } };
+      standings[winner][game].w += winCount;
+      standings[winner][game].g += 1;
+      standings[loser][game].l += 1;
+      standings[loser][game].g += 1;
+    }
+
+    function renderStandings() {
+      const table = document.getElementById("standingsTable");
+      table.innerHTML = "";
+
+      const data = players.map(p => {
+        const s = standings[p]?.[currentGame] || { w:0, l:0, g:0 };
+        const winPct = s.g > 0 ? ((s.w / s.g) * 100).toFixed(1) : "0.0";
+        return { name: p, ...s, winPct };
+      }).sort((a, b) => b.w - a.w);
+
+      data.forEach(p => {
+        const row = `<tr>
+          <td>${p.name}</td><td>${p.w}</td><td>${p.l}</td><td>${p.g}</td><td>${p.winPct}%</td>
+        </tr>`;
+        table.innerHTML += row;
+      });
+    }
+
+    renderPlayers();
+  </script>
+</body>
+</html>
